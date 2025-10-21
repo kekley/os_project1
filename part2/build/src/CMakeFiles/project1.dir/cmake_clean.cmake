@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "/home/jesus/fall2025/4310/project1/part2/bin/project1"
-  "/home/jesus/fall2025/4310/project1/part2/bin/project1.pdb"
+  "/home/jesus/os_project1/part2/bin/project1"
+  "/home/jesus/os_project1/part2/bin/project1.pdb"
   "CMakeFiles/project1.dir/link.d"
   "CMakeFiles/project1.dir/main.cpp.o"
   "CMakeFiles/project1.dir/main.cpp.o.d"
