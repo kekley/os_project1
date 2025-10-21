@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -28,8 +29,8 @@ public:
 
   void tick() {
     m_cpu_time += 1;
-    std::printf("pid: %d, time_on_cpu: %zu, time_left: %zu \n", pid(),
-                time_on_cpu(), time_left());
+    std::cout << "pid: " << pid() << " time on cpu: " << time_on_cpu()
+              << " time left: " << time_left() << std::endl;
   }
 
   int burst_time() const { return m_burst_time; }
@@ -44,18 +45,62 @@ public:
 
   size_t arrival_time() const { return m_arrival_time; }
 };
-class Scheduler {
 
+class Scheduler {
 protected:
   size_t m_time_elapsed;
   size_t m_idle_time;
   std::vector<Task> m_task_data;
-  std::vector<size_t> m_uninitialized_tasks;
-  std::vector<size_t> m_ready_tasks;
+  std::vector<size_t> m_not_arrived_task_indices;
+  std::vector<size_t> m_ready_task_indices;
   std::unordered_map<int, size_t> m_task_start_times;
   std::unordered_map<int, size_t> m_turnaround_times;
 
+  // Checks if the task at the front of the ready queue is finished. If so,
+  // records its turnaround time and removes it
+  // Returns true if a task was finished and removed, false otherwise.
+  bool handle_any_finished_task() {
+    if (!m_ready_task_indices.empty()) {
+      Task &current_task = m_task_data[m_ready_task_indices.front()];
+      if (current_task.time_left() == 0) {
+        m_turnaround_times.insert({current_task.pid(), m_time_elapsed});
+        m_ready_task_indices.erase(m_ready_task_indices.begin());
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Finds all tasks that have arrived by this point and moves them into a new
+  // vector. Returns a vector of indices for newly arrived tasks.
+  std::vector<size_t> get_newly_arrived_tasks() {
+    std::vector<size_t> tasks_to_add = {};
+
+    auto new_end = std::remove_if(m_not_arrived_task_indices.begin(),
+                                  m_not_arrived_task_indices.end(),
+                                  [this, &tasks_to_add](size_t task_index) {
+                                    auto &task = m_task_data[task_index];
+                                    if (task.is_ready(m_time_elapsed)) {
+                                      tasks_to_add.push_back(task_index);
+                                      return true;
+                                    }
+                                    return false;
+                                  });
+
+    m_not_arrived_task_indices.erase(new_end, m_not_arrived_task_indices.end());
+    return tasks_to_add;
+  }
+
+  virtual void on_task_tick(Task &current_task) {}
+
+  virtual void update_ready_list() = 0;
+
+  virtual bool can_make_scheduling_decision() = 0;
+
 public:
+  Scheduler() : m_time_elapsed(0), m_idle_time(0) {}
+  virtual ~Scheduler() {}
+
   // Line format: Pid Arrival_Time Burst_Time Priority
   void load_tasks(std::string tasks_string) {
     std::istringstream string_stream(tasks_string);
@@ -75,313 +120,266 @@ public:
       line_stream >> burst_time;
       line_stream >> priority;
       m_task_data.push_back(Task(pid, arrival_time, burst_time, priority));
-      m_uninitialized_tasks.push_back(i);
+      m_not_arrived_task_indices.push_back(i);
       i++;
     }
   }
 
-  void print_results() const {
-    /*
-    Average waiting time
-    Average response time
-    Average turnaround time
-    CPU utilization rate
-    */
+  bool all_tasks_completed() const {
+    return m_not_arrived_task_indices.empty() && m_ready_task_indices.empty();
+  }
 
+  // The function that drives the scheduler, stepping one time unit every time
+  // it's called. returns true if there are unfinished tasks and false if all
+  // tasks have been completed
+  bool tick() {
+    if (all_tasks_completed()) {
+      return false;
+    }
+
+    if (can_make_scheduling_decision()) {
+      update_ready_list();
+    }
+    std::cout << "Tick: " << m_time_elapsed << " ";
+    if (m_ready_task_indices.empty()) {
+      std::cout << "IDLE" << std::endl;
+      m_idle_time += 1;
+    } else {
+      Task &current_task = m_task_data[m_ready_task_indices.front()];
+      if (current_task.time_on_cpu() == 0) {
+        // Records the time of a task's first tick
+        m_task_start_times.try_emplace(current_task.pid(), m_time_elapsed);
+      }
+      current_task.tick();
+      // Hook for updating scheduler state if needed (round robin)
+      on_task_tick(current_task);
+    }
+    m_time_elapsed += 1;
+    return true;
+  }
+
+  void print_results() const {
     float num_tasks = static_cast<float>(m_task_data.size());
+    if (num_tasks == 0) {
+      std::cout << "No tasks to process." << std::endl;
+      return;
+    }
+
     float total_wait_time = 0.0;
     float total_turnaround_time = 0.0;
     float total_response_time = 0.0;
-    for (auto task : m_task_data) {
-      size_t first_cycle = m_task_start_times.at(task.pid());
-      size_t last_cycle = m_turnaround_times.at(task.pid());
+    for (auto const &[pid, last_cycle] : m_turnaround_times) {
+      const Task *task_ptr = nullptr;
+      for (const auto &t : m_task_data) {
+        if (t.pid() == pid) {
+          task_ptr = &t;
+          break;
+        }
+      }
+      if (!task_ptr)
+        continue; // unreachable
 
-      // std::printf("first cycle: %zu\n last_cycle: %zu\n,arrival_time: %zu\n",
-      //             first_cycle, last_cycle, task.arrival_time());
+      const Task &task = *task_ptr;
+      size_t first_cycle = m_task_start_times.at(task.pid());
+
       float response_time =
           static_cast<float>(first_cycle - task.arrival_time());
       float turnaround_time =
           static_cast<float>(last_cycle - task.arrival_time());
       float wait_time = turnaround_time - static_cast<float>(task.burst_time());
+
       total_wait_time += wait_time;
       total_turnaround_time += turnaround_time;
       total_response_time += response_time;
     }
+
     float avg_wait_time = total_wait_time / num_tasks;
     float avg_response_time = total_response_time / num_tasks;
     float avg_turnaround_time = total_turnaround_time / num_tasks;
     float cpu_utilization = 1.0 - (static_cast<float>(m_idle_time) /
                                    static_cast<float>(m_time_elapsed));
 
-    std::printf("Avg Wait Time: %f\nAvg Response Time: %f\n Avg Turnaround "
-                "Time: %f\nCPU Utilization:%f\n",
-                avg_wait_time, avg_response_time, avg_turnaround_time,
-                cpu_utilization);
+    std::cout << "\n--- Results ---\n"
+              << "Avg Wait Time: " << avg_wait_time << std::endl
+              << "Avg Response Time: " << avg_response_time << std::endl
+              << "Avg Turnaround Time: " << avg_turnaround_time << std::endl
+              << "CPU Utilization: " << cpu_utilization << std::endl
+              << std::endl;
   }
 };
-
-// First come first serve
+// First Come First Serve
 class FCFS : public Scheduler {
+  // Add tasks to the ready list in the order of their arrival time
+  void update_ready_list() override {
+    handle_any_finished_task();
 
-  void update_ready_list() {
+    auto tasks_to_add = get_newly_arrived_tasks();
 
     auto comp = [this](size_t a, size_t b) {
       auto &task_a = m_task_data[a];
       auto &task_b = m_task_data[b];
-
       if (task_a.arrival_time() != task_b.arrival_time()) {
         return task_a.arrival_time() < task_b.arrival_time();
       }
       return task_a.priority() < task_b.priority();
     };
-
-    if (!m_ready_tasks.empty()) {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_left() == 0) {
-        m_turnaround_times.insert({current_task.pid(), m_time_elapsed});
-        m_ready_tasks.erase(m_ready_tasks.begin());
-      }
-    }
-
-    std::vector<size_t> tasks_to_add = {};
-
-    auto new_end = std::remove_if(m_uninitialized_tasks.begin(),
-                                  m_uninitialized_tasks.end(),
-                                  [this, &tasks_to_add](size_t task_index) {
-                                    auto &task = m_task_data[task_index];
-                                    if (task.is_ready(m_time_elapsed)) {
-                                      tasks_to_add.push_back(task_index);
-                                      return true;
-                                    }
-                                    return false;
-                                  });
-
-    m_uninitialized_tasks.erase(new_end, m_uninitialized_tasks.end());
     std::sort(tasks_to_add.begin(), tasks_to_add.end(), comp);
 
     for (size_t task_index : tasks_to_add) {
-      m_ready_tasks.push_back(task_index);
+      m_ready_task_indices.push_back(task_index);
     }
   }
-
-  bool can_make_scheduling_decision() {
-    if (!m_ready_tasks.empty()) {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      return current_task.time_left() == 0;
-    } else {
+  // only make a scheduling decision when there is not a task running
+  bool can_make_scheduling_decision() override {
+    if (m_ready_task_indices.empty()) {
       return true;
     }
-  }
-
-  bool all_tasks_completed() {
-    return m_uninitialized_tasks.empty() && m_ready_tasks.empty();
-  }
-
-public:
-  bool tick() {
-    std::printf("Tick: %zu ", m_time_elapsed);
-    if (all_tasks_completed()) {
-      return false;
-    }
-
-    if (can_make_scheduling_decision()) {
-      update_ready_list();
-    }
-
-    if (m_ready_tasks.empty()) {
-      m_idle_time += 1;
-    } else {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_on_cpu() == 0) {
-        m_task_start_times.insert({current_task.pid(), m_time_elapsed});
-      }
-      current_task.tick();
-    }
-    m_time_elapsed += 1;
-    return true;
+    return m_task_data[m_ready_task_indices.front()].time_left() == 0;
   }
 };
 
-// Shortest job first
+// Shortest Job First (Non-Preemptive)
 class SJF : public Scheduler {
 
-  void update_ready_list() {
+  // Sort tasks in the ready list by their burst time
+  void update_ready_list() override {
+    handle_any_finished_task();
+
+    auto tasks_to_add = get_newly_arrived_tasks();
+
+    for (size_t task_index : tasks_to_add) {
+      m_ready_task_indices.push_back(task_index);
+    }
 
     auto comp = [this](size_t a, size_t b) {
       auto &task_a = m_task_data[a];
       auto &task_b = m_task_data[b];
-
       if (task_a.burst_time() != task_b.burst_time()) {
-
         return task_a.burst_time() < task_b.burst_time();
       }
       return task_a.priority() < task_b.priority();
     };
 
-    if (!m_ready_tasks.empty()) {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_left() == 0) {
-        m_turnaround_times.insert({current_task.pid(), m_time_elapsed});
-        m_ready_tasks.erase(m_ready_tasks.begin());
-      }
-    }
-
-    std::vector<size_t> tasks_to_add = {};
-
-    auto new_end = std::remove_if(m_uninitialized_tasks.begin(),
-                                  m_uninitialized_tasks.end(),
-                                  [this, &tasks_to_add](size_t task_index) {
-                                    auto &task = m_task_data[task_index];
-                                    if (task.is_ready(m_time_elapsed)) {
-                                      tasks_to_add.push_back(task_index);
-                                      return true;
-                                    }
-                                    return false;
-                                  });
-
-    m_uninitialized_tasks.erase(new_end, m_uninitialized_tasks.end());
-    std::sort(tasks_to_add.begin(), tasks_to_add.end(), comp);
-
-    for (size_t task_index : tasks_to_add) {
-      m_ready_tasks.push_back(task_index);
-    }
+    std::sort(m_ready_task_indices.begin(), m_ready_task_indices.end(), comp);
   }
-
-  bool can_make_scheduling_decision() {
-    if (!m_ready_tasks.empty()) {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      return current_task.time_left() == 0;
-    } else {
+  // This algorithm is not preemptive, so we only make scheduling decisions when
+  // there is no task running
+  bool can_make_scheduling_decision() override {
+    if (m_ready_task_indices.empty()) {
       return true;
     }
-  }
-
-  bool all_tasks_completed() {
-    return m_uninitialized_tasks.empty() && m_ready_tasks.empty();
-  }
-
-public:
-  bool tick() {
-    std::printf("Tick: %zu ", m_time_elapsed);
-    if (all_tasks_completed()) {
-      return false;
-    }
-
-    if (can_make_scheduling_decision()) {
-      update_ready_list();
-    }
-
-    if (m_ready_tasks.empty()) {
-      m_idle_time += 1;
-    } else {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_on_cpu() == 0) {
-        m_task_start_times.insert({current_task.pid(), m_time_elapsed});
-      }
-      current_task.tick();
-    }
-    m_time_elapsed += 1;
-    return true;
+    return m_task_data[m_ready_task_indices.front()].time_left() == 0;
   }
 };
 
-// Preemptive priority scheduling
+// Preemptive Priority Scheduling
 class PPS : public Scheduler {
+  // Sort tasks in ready list by priority
+  void update_ready_list() override {
+    handle_any_finished_task();
 
-  void update_ready_list() {
+    auto tasks_to_add = get_newly_arrived_tasks();
+
+    for (size_t task_index : tasks_to_add) {
+      m_ready_task_indices.push_back(task_index);
+    }
 
     auto comp = [this](size_t a, size_t b) {
       auto &task_a = m_task_data[a];
       auto &task_b = m_task_data[b];
-
       if (task_a.priority() != task_b.priority()) {
-
         return task_a.priority() < task_b.priority();
       }
       return task_a.burst_time() < task_b.burst_time();
     };
 
-    if (!m_ready_tasks.empty()) {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_left() == 0) {
-        m_turnaround_times.insert({current_task.pid(), m_time_elapsed});
-        m_ready_tasks.erase(m_ready_tasks.begin());
-      }
-    }
-
-    std::vector<size_t> tasks_to_add = {};
-
-    auto new_end = std::remove_if(m_uninitialized_tasks.begin(),
-                                  m_uninitialized_tasks.end(),
-                                  [this, &tasks_to_add](size_t task_index) {
-                                    auto &task = m_task_data[task_index];
-                                    if (task.is_ready(m_time_elapsed)) {
-                                      tasks_to_add.push_back(task_index);
-                                      return true;
-                                    }
-                                    return false;
-                                  });
-
-    m_uninitialized_tasks.erase(new_end, m_uninitialized_tasks.end());
-
-    for (size_t task_index : tasks_to_add) {
-      m_ready_tasks.push_back(task_index);
-    }
-
-    std::sort(m_ready_tasks.begin(), m_ready_tasks.end(), comp);
+    std::sort(m_ready_task_indices.begin(), m_ready_task_indices.end(), comp);
   }
 
-  bool can_make_scheduling_decision() {
-    if (!m_ready_tasks.empty()) {
-
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_left() == 0) {
-        return true;
-      }
-      for (size_t task_index : m_uninitialized_tasks) {
-        Task &task = m_task_data[task_index];
-        if (task.priority() < current_task.priority()) {
-          return true;
-        }
-      }
-      return false;
-    } else {
+  // This algorithm IS preemptive, so we also make scheduling decisions if a
+  // task arrives with higher priority
+  bool can_make_scheduling_decision() override {
+    if (m_ready_task_indices.empty()) {
       return true;
     }
-  }
 
-  bool all_tasks_completed() {
-    return m_uninitialized_tasks.empty() && m_ready_tasks.empty();
-  }
-
-public:
-  bool tick() {
-    std::printf("Tick: %zu ", m_time_elapsed);
-    if (all_tasks_completed()) {
-      return false;
+    Task &current_task = m_task_data[m_ready_task_indices.front()];
+    if (current_task.time_left() == 0) {
+      return true;
     }
 
-    if (can_make_scheduling_decision()) {
-      update_ready_list();
-    }
-
-    if (m_ready_tasks.empty()) {
-      m_idle_time += 1;
-    } else {
-      Task &current_task = m_task_data[m_ready_tasks.front()];
-      if (current_task.time_on_cpu() == 0) {
-        m_task_start_times.insert({current_task.pid(), m_time_elapsed});
+    for (size_t task_index : m_not_arrived_task_indices) {
+      Task &task = m_task_data[task_index];
+      if (task.is_ready(m_time_elapsed) &&
+          task.priority() < current_task.priority()) {
+        return true;
       }
-      current_task.tick();
     }
-    m_time_elapsed += 1;
-    return true;
+    return false;
   }
 };
 
 // Round Robin
 class RR : public Scheduler {
-  size_t quantum;
+  size_t m_quantum;
+  size_t m_current_slice;
+
+  // Update the current slice time
+  void on_task_tick(Task &current_task) override { m_current_slice++; }
+
+  // Add new tasks to the ready list in FCFS order, but move the task at the
+  // front of the list when its time slice ends
+  void update_ready_list() override {
+    bool task_finished = handle_any_finished_task();
+    if (task_finished) {
+      m_current_slice = 0;
+    }
+
+    auto tasks_to_add = get_newly_arrived_tasks();
+
+    auto comp = [this](size_t a, size_t b) {
+      return m_task_data[a].arrival_time() < m_task_data[b].arrival_time();
+    };
+    std::sort(tasks_to_add.begin(), tasks_to_add.end(), comp);
+
+    for (size_t task_index : tasks_to_add) {
+      m_ready_task_indices.push_back(task_index);
+    }
+
+    // Check if time slice is up
+    bool slice_up = m_current_slice >= m_quantum;
+    if (slice_up && !task_finished && !m_ready_task_indices.empty()) {
+      m_ready_task_indices.push_back(m_ready_task_indices.front());
+      m_ready_task_indices.erase(m_ready_task_indices.begin());
+      m_current_slice = 0;
+    }
+  }
+  // Make scheduling decisions when a time slice ends as well
+  bool can_make_scheduling_decision() override {
+    if (m_ready_task_indices.empty()) {
+      return true;
+    }
+    Task &current_task = m_task_data[m_ready_task_indices.front()];
+    if (current_task.time_left() == 0) {
+      return true;
+    }
+    if (m_current_slice >= m_quantum) {
+      return true;
+    }
+    for (size_t task_index : m_not_arrived_task_indices) {
+      if (m_task_data[task_index].is_ready(m_time_elapsed)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+public:
+  RR(size_t quantum) : m_quantum(quantum), m_current_slice(0) {
+    if (m_quantum == 0)
+      // Minimum quantum of 1
+      m_quantum = 1;
+  }
 };
 
 int main() {
@@ -389,8 +387,9 @@ int main() {
   std::string input_data =
       std::string(std::istreambuf_iterator<char>(input_file),
                   std::istreambuf_iterator<char>());
-  std::printf("input_data: \n%s", input_data.c_str());
+  std::cout << "input_data: \n" << input_data << std::endl;
 
+  std::cout << "\nFCFS\n";
   auto fcfs = FCFS();
   fcfs.load_tasks(input_data);
   while (fcfs.tick()) {
@@ -398,6 +397,7 @@ int main() {
 
   fcfs.print_results();
 
+  std::cout << "\nSJF\n";
   auto sjf = SJF();
   sjf.load_tasks(input_data);
   while (sjf.tick()) {
@@ -405,12 +405,21 @@ int main() {
 
   sjf.print_results();
 
+  std::cout << "\nPPS\n";
   auto pps = PPS();
   pps.load_tasks(input_data);
 
   while (pps.tick()) {
   };
   pps.print_results();
+
+  std::cout << "\nRR\n";
+  RR rr = RR(5);
+
+  rr.load_tasks(input_data);
+  while (rr.tick()) {
+  }
+  rr.print_results();
 
   return 0;
 }
