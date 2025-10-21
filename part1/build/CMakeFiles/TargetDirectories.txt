@@ -1,0 +1,5 @@
+/home/jesus/fall2025/4310/build/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/build/CMakeFiles/rebuild_cache.dir
+/home/jesus/fall2025/4310/build/src/CMakeFiles/project1.dir
+/home/jesus/fall2025/4310/build/src/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/build/src/CMakeFiles/rebuild_cache.dir

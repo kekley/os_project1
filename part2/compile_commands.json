@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/jesus/fall2025/4310/project1/part2/build/src",
+  "command": "/usr/bin/c++   -Wall -Wextra -g -std=gnu++20 -o CMakeFiles/project1.dir/main.cpp.o -c /home/jesus/fall2025/4310/project1/part2/src/main.cpp",
+  "file": "/home/jesus/fall2025/4310/project1/part2/src/main.cpp",
+  "output": "src/CMakeFiles/project1.dir/main.cpp.o"
+}
+]
