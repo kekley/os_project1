@@ -1,0 +1,12 @@
+/home/jesus/fall2025/4310/project1/build/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/project1/build/CMakeFiles/rebuild_cache.dir
+/home/jesus/fall2025/4310/project1/build/part1/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/project1/build/part1/CMakeFiles/rebuild_cache.dir
+/home/jesus/fall2025/4310/project1/build/part1/src/CMakeFiles/part1.dir
+/home/jesus/fall2025/4310/project1/build/part1/src/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/project1/build/part1/src/CMakeFiles/rebuild_cache.dir
+/home/jesus/fall2025/4310/project1/build/part2/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/project1/build/part2/CMakeFiles/rebuild_cache.dir
+/home/jesus/fall2025/4310/project1/build/part2/src/CMakeFiles/part2.dir
+/home/jesus/fall2025/4310/project1/build/part2/src/CMakeFiles/edit_cache.dir
+/home/jesus/fall2025/4310/project1/build/part2/src/CMakeFiles/rebuild_cache.dir

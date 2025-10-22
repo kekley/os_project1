@@ -1,5 +1,0 @@
-/home/jesus/os_project1/part2/build/CMakeFiles/edit_cache.dir
-/home/jesus/os_project1/part2/build/CMakeFiles/rebuild_cache.dir
-/home/jesus/os_project1/part2/build/src/CMakeFiles/project1.dir
-/home/jesus/os_project1/part2/build/src/CMakeFiles/edit_cache.dir
-/home/jesus/os_project1/part2/build/src/CMakeFiles/rebuild_cache.dir

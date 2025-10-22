@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/jesus/fall2025/4310/build/cmake_install.cmake",
-		"/home/jesus/fall2025/4310/build/src/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

@@ -1,3 +1,3 @@
-add_executable(project1 main.cpp)
+add_executable(part1 main.cpp)
 
-set_property(TARGET project1 PROPERTY CXX_STANDARD 20)
+set_property(TARGET part1 PROPERTY CXX_STANDARD 20)

@@ -7,6 +7,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// Object that stores all the task data read in from the file and how long this
+// task has been run
 class Task {
   int m_pid;
   size_t m_arrival_time;
@@ -23,16 +26,19 @@ public:
     m_cpu_time = 0;
   }
 
+  // Has the arrival time been reached?
   bool is_ready(size_t total_time_elapsed) const {
     return total_time_elapsed >= m_arrival_time;
   }
 
+  // Increment cpu time and print status
   void tick() {
     m_cpu_time += 1;
     std::cout << "pid: " << pid() << " time on cpu: " << time_on_cpu()
               << " time left: " << time_left() << std::endl;
   }
 
+  // Getters
   int burst_time() const { return m_burst_time; }
 
   int pid() const { return m_pid; }
@@ -46,6 +52,7 @@ public:
   size_t arrival_time() const { return m_arrival_time; }
 };
 
+// Base class for all our schedulers
 class Scheduler {
 protected:
   size_t m_time_elapsed;
@@ -91,7 +98,11 @@ protected:
     return tasks_to_add;
   }
 
-  virtual void on_task_tick(Task &current_task) {}
+  // Methods that will be specialized for each scheduler
+  virtual void on_task_tick(Task &_) {
+    // Suppress unused warning
+    (void)_;
+  }
 
   virtual void update_ready_list() = 0;
 
@@ -132,24 +143,34 @@ public:
   // The function that drives the scheduler, stepping one time unit every time
   // it's called. returns true if there are unfinished tasks and false if all
   // tasks have been completed
+
   bool tick() {
+    if (can_make_scheduling_decision()) {
+      update_ready_list();
+    }
+
+    // Are we done?
     if (all_tasks_completed()) {
       return false;
     }
 
-    if (can_make_scheduling_decision()) {
-      update_ready_list();
-    }
+    // Print what tick we're on
     std::cout << "Tick: " << m_time_elapsed << " ";
+
+    // Check if we have anything to work on
     if (m_ready_task_indices.empty()) {
+      // Keep track of idle cycles
       std::cout << "IDLE" << std::endl;
       m_idle_time += 1;
     } else {
+      // Get the task to run
       Task &current_task = m_task_data[m_ready_task_indices.front()];
       if (current_task.time_on_cpu() == 0) {
         // Records the time of a task's first tick
         m_task_start_times.try_emplace(current_task.pid(), m_time_elapsed);
       }
+
+      // Run one cycle of the task
       current_task.tick();
       // Hook for updating scheduler state if needed (round robin)
       on_task_tick(current_task);
@@ -165,6 +186,7 @@ public:
       return;
     }
 
+    // Calculate stats for this run
     float total_wait_time = 0.0;
     float total_turnaround_time = 0.0;
     float total_response_time = 0.0;
@@ -325,7 +347,11 @@ class RR : public Scheduler {
   size_t m_current_slice;
 
   // Update the current slice time
-  void on_task_tick(Task &current_task) override { m_current_slice++; }
+  void on_task_tick(Task &_) override {
+    // Suppress unused warning
+    (void)_;
+    m_current_slice++;
+  }
 
   // Add new tasks to the ready list in FCFS order, but move the task at the
   // front of the list when its time slice ends
@@ -383,43 +409,76 @@ public:
 };
 
 int main() {
-  auto input_file = std::ifstream("../input.txt");
-  std::string input_data =
-      std::string(std::istreambuf_iterator<char>(input_file),
-                  std::istreambuf_iterator<char>());
-  std::cout << "input_data: \n" << input_data << std::endl;
-
-  std::cout << "\nFCFS\n";
-  auto fcfs = FCFS();
-  fcfs.load_tasks(input_data);
-  while (fcfs.tick()) {
-  };
-
-  fcfs.print_results();
-
-  std::cout << "\nSJF\n";
-  auto sjf = SJF();
-  sjf.load_tasks(input_data);
-  while (sjf.tick()) {
-  };
-
-  sjf.print_results();
-
-  std::cout << "\nPPS\n";
-  auto pps = PPS();
-  pps.load_tasks(input_data);
-
-  while (pps.tick()) {
-  };
-  pps.print_results();
-
-  std::cout << "\nRR\n";
-  RR rr = RR(5);
-
-  rr.load_tasks(input_data);
-  while (rr.tick()) {
+  std::string input_data;
+  while (1) {
+    std::cout << "Enter the path for the input file: " << std::endl;
+    std::string input_file_path;
+    std::cin >> input_file_path;
+    auto input_file = std::ifstream(input_file_path);
+    if (!input_file.good()) {
+      std::cout << "Error loading file" << std::endl;
+    } else {
+      input_data = std::string(std::istreambuf_iterator<char>(input_file),
+                               std::istreambuf_iterator<char>());
+      std::cout << "input_data: \n" << input_data << std::endl;
+      break;
+    }
   }
-  rr.print_results();
+
+  Scheduler *scheduler;
+  while (1) {
+    std::cout << "Select which scheduler to use: (FCFS,SJF,PPS,RR)"
+              << std::endl;
+
+    std::string scheduler_selection;
+
+    std::cin >> scheduler_selection;
+
+    std::transform(scheduler_selection.begin(), scheduler_selection.end(),
+                   scheduler_selection.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (scheduler_selection == "fcfs") {
+      std::cout << "\nFCFS\n";
+      scheduler = new FCFS();
+      break;
+    } else if (scheduler_selection == "sjf") {
+      std::cout << "\nSJF\n";
+      scheduler = new SJF();
+
+      break;
+    } else if (scheduler_selection == "pps") {
+
+      std::cout << "\nPPS\n";
+      scheduler = new PPS();
+
+      break;
+    } else if (scheduler_selection == "rr") {
+
+      std::cout << "\nRR\n";
+      float quantum;
+      while (1) {
+        std::cout << "Enter a quantum value: " << std::endl;
+        std::cin >> quantum;
+        if (quantum > 0.0) {
+          break;
+        } else {
+          std::cout << "Quantum must be positive" << std::endl;
+        }
+      }
+      size_t quantum_int = static_cast<size_t>(quantum);
+      scheduler = new RR(quantum_int);
+      break;
+    } else {
+      std::cout << "Invalid selection";
+    }
+  }
+
+  scheduler->load_tasks(input_data);
+
+  while (scheduler->tick()) {
+  }
+  scheduler->print_results();
 
   return 0;
 }
