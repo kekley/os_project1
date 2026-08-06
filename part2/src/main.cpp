@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -35,7 +36,7 @@ public:
   void tick() {
     m_cpu_time += 1;
     std::cout << "pid: " << pid() << " time on cpu: " << time_on_cpu()
-              << " time left: " << time_left() << std::endl;
+              << " time left: " << time_left() << '\n';
   }
 
   // Getters
@@ -154,13 +155,12 @@ public:
       return false;
     }
 
-    // Print what tick we're on
     std::cout << "Tick: " << m_time_elapsed << " ";
 
     // Check if we have anything to work on
     if (m_ready_task_indices.empty()) {
       // Keep track of idle cycles
-      std::cout << "IDLE" << std::endl;
+      std::cout << "IDLE" << '\n';
       m_idle_time += 1;
     } else {
       // Get the task to run
@@ -182,7 +182,7 @@ public:
   void print_results() const {
     float num_tasks = static_cast<float>(m_task_data.size());
     if (num_tasks == 0) {
-      std::cout << "No tasks to process." << std::endl;
+      std::cout << "No tasks to process." << '\n';
       return;
     }
 
@@ -222,11 +222,11 @@ public:
                                    static_cast<float>(m_time_elapsed));
 
     std::cout << "\n--- Results ---\n"
-              << "Avg Wait Time: " << avg_wait_time << std::endl
-              << "Avg Response Time: " << avg_response_time << std::endl
-              << "Avg Turnaround Time: " << avg_turnaround_time << std::endl
-              << "CPU Utilization: " << cpu_utilization << std::endl
-              << std::endl;
+              << "Avg Wait Time: " << avg_wait_time << '\n'
+              << "Avg Response Time: " << avg_response_time << '\n'
+              << "Avg Turnaround Time: " << avg_turnaround_time << '\n'
+              << "CPU Utilization: " << cpu_utilization << '\n'
+              << '\n';
   }
 };
 // First Come First Serve
@@ -411,24 +411,23 @@ public:
 int main() {
   std::string input_data;
   while (1) {
-    std::cout << "Enter the path for the input file: " << std::endl;
+    std::cout << "Enter the path for the input file: " << '\n';
     std::string input_file_path;
     std::cin >> input_file_path;
     auto input_file = std::ifstream(input_file_path);
     if (!input_file.good()) {
-      std::cout << "Error loading file" << std::endl;
+      std::cout << "Error loading file" << '\n';
     } else {
       input_data = std::string(std::istreambuf_iterator<char>(input_file),
                                std::istreambuf_iterator<char>());
-      std::cout << "input_data: \n" << input_data << std::endl;
+      std::cout << "input_data: \n" << input_data << '\n';
       break;
     }
   }
 
-  Scheduler *scheduler;
+  std::unique_ptr<Scheduler> scheduler;
   while (1) {
-    std::cout << "Select which scheduler to use: (FCFS,SJF,PPS,RR)"
-              << std::endl;
+    std::cout << "Select which scheduler to use: (FCFS,SJF,PPS,RR)" << '\n';
 
     std::string scheduler_selection;
 
@@ -440,34 +439,33 @@ int main() {
 
     if (scheduler_selection == "fcfs") {
       std::cout << "\nFCFS\n";
-      scheduler = new FCFS();
+      scheduler = std::make_unique<FCFS>();
       break;
     } else if (scheduler_selection == "sjf") {
       std::cout << "\nSJF\n";
-      scheduler = new SJF();
+      scheduler = std::make_unique<SJF>();
 
       break;
     } else if (scheduler_selection == "pps") {
 
       std::cout << "\nPPS\n";
-      scheduler = new PPS();
+      scheduler = std::make_unique<PPS>();
 
       break;
     } else if (scheduler_selection == "rr") {
 
       std::cout << "\nRR\n";
-      float quantum;
+      size_t quantum;
       while (1) {
-        std::cout << "Enter a quantum value: " << std::endl;
+        std::cout << "Enter a quantum value: " << '\n';
         std::cin >> quantum;
-        if (quantum > 0.0) {
-          break;
+        if (quantum == 0) {
+          std::cout << "Quantum must be positive" << '\n';
         } else {
-          std::cout << "Quantum must be positive" << std::endl;
+          break;
         }
       }
-      size_t quantum_int = static_cast<size_t>(quantum);
-      scheduler = new RR(quantum_int);
+      scheduler = std::make_unique<RR>(quantum);
       break;
     } else {
       std::cout << "Invalid selection";

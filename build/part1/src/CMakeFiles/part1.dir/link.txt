@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wall -Wextra -O3 -Wl,--dependency-file=CMakeFiles/part1.dir/link.d CMakeFiles/part1.dir/main.cpp.o -o /home/jesus/fall2025/4310/project1/bin/part1
